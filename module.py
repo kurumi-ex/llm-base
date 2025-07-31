@@ -45,11 +45,3 @@ class LoraLinear(nn.Module):
         nn.init.kaiming_normal_(self.lora_a.data, a=math.sqrt(5))
         print(self.lora_a.data)
         nn.init.zeros_(self.lora_b.data)
-
-
-class Softmax(nn.Module):
-    def __init__(self, ):
-        super().__init__()
-
-    def forward(self, x):
-        pass
