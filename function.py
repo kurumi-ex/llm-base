@@ -49,3 +49,5 @@ loss = loss_fn(torch.tensor(logits), torch.tensor(targets))
 
 print(f"my result: {cross_entropy(logits, targets)}")
 print(f"torch result: {loss.item()}")
+
+print(np.max(logits, axis=-1))

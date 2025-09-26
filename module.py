@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 import math
 
 
@@ -45,3 +46,53 @@ class LoraLinear(nn.Module):
         nn.init.kaiming_normal_(self.lora_a.data, a=math.sqrt(5))
         print(self.lora_a.data)
         nn.init.zeros_(self.lora_b.data)
+
+
+class Expert(nn.Module):
+    def __init__(self, in_features, out_features, hidden_dims):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_features, hidden_dims),
+            nn.GELU(),
+            nn.Linear(hidden_dims, out_features),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class MoE(nn.Module):
+    def __init__(self, in_features, hidden_dims, expert_nums, top_k, expert_capacity):
+        super().__init__()
+        self.expert_nums = expert_nums
+        self.top_k = top_k
+        self.capacity = expert_capacity
+        self.experts = nn.ModuleList(
+            [Expert(in_features, in_features, hidden_dims) for _ in range(expert_nums)]
+        )
+        self.ffn = nn.Linear(in_features, expert_nums)
+
+    def forward(self, x):
+        y = self.ffn(x)
+        scores = F.softmax(y, dim=-1)
+        topk_probs, topk_indices = torch.topk(scores, dim=-1, k = self.top_k)
+
+        for expert in self.experts:
+            # shi1
+            cur_y = expert(x)
+
+        weights = []
+        expert_out = []
+        outputs = weights * expert_out
+
+
+if __name__ == "__main__":
+    # expert = Expert(in_features=100, out_features=100, hidden_dims=64)
+    # myinput = torch.randn(3, 100)
+    # print(expert(myinput))
+    x = torch.randn(2, 3)
+    x = F.softmax(x, dim=-1)
+    print(x)
+    _, _x = torch.topk(x, dim=-1, k=2)
+    print(_x)
+    print(_)
