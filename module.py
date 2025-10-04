@@ -79,6 +79,8 @@ class MoE(nn.Module):
         y = self.ffn(x)
         scores = F.softmax(y, dim=-1)
         top_k_probs, top_k_indices = torch.topk(scores, dim=-1, k=self.top_k)
+
+        # 展平
         flat_probs = top_k_probs.view(-1)
         flat_indices = top_k_indices.view(-1)
 
@@ -93,7 +95,6 @@ class MoE(nn.Module):
         if self.training:
             importance = scores.sum(dim=0)
             aux_loss = torch.var(importance) / torch.mean(importance)
-
         else:
             aux_loss = 0
 
@@ -116,6 +117,46 @@ class MoE(nn.Module):
             outputs.index_add_(0, exp_samples, expert_output)
 
         return outputs, aux_loss
+
+
+class GQA(nn.Module):
+    def __init__(self, in_features: int,
+                 hidden_dims: int,
+                 head_nums: int = 8,
+                 mask: bool = True,
+                 bias: bool = True, ):
+        super().__init__()
+        self.head_nums = head_nums
+        self.hidden_dims = hidden_dims
+        self.mask = mask
+        self.wq = nn.Linear(in_features, hidden_dims * head_nums, bias=bias)
+        self.wk = nn.Linear(in_features, hidden_dims * head_nums // 2, bias=bias)
+        self.wv = nn.Linear(in_features, hidden_dims * head_nums // 2, bias=bias)
+        self.wo = nn.Linear(hidden_dims * head_nums, in_features, bias=bias)
+
+    def forward(self, x, ):
+        batch_size, time_step, vec_size = x.shape
+        q = self.wq(x).reshape(batch_size, time_step, self.head_nums, self.hidden_dims)
+        k = self.wk(x).reshape(batch_size, time_step, self.head_nums // 2, self.hidden_dims)
+        v = self.wv(x).reshape(batch_size, time_step, self.head_nums // 2, self.hidden_dims)
+
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        k = torch.cat([k, k], dim=1)
+
+        scores = F.softmax(q @ k.transpose(-1, -2), dim=-1)
+
+        if self.mask:
+            tmp = torch.ones(batch_size, self.head_nums, time_step, time_step, )
+            mask = torch.tril(tmp)
+            scores = scores.masked_fill(mask == 0, float("-inf"))
+            # print(scores)
+
+        v = v.transpose(1, 2)
+        v = torch.cat([v, v], dim=1)
+        z = scores @ v
+        z = z.transpose(1, 2).reshape(batch_size, time_step, self.head_nums * self.hidden_dims)
+        return self.wo(z)
 
 
 if __name__ == "__main__":
@@ -153,7 +194,11 @@ if __name__ == "__main__":
     #
     # y, _ = model(x.reshape(-1, 64))
     # print(y.shape)
+    #
+    # x = torch.randn(2, 3)
+    # print(x.sum(dim=0))
+    # print(torch.mean(x, dim=0))
 
-    x = torch.randn(2, 3)
-    print(x.sum(dim=0))
-    print(torch.mean(x, dim=0))
+    model = GQA(in_features=256, hidden_dims=512, )
+    input_val = torch.randn(16, 32, 256)
+    print(model(input_val).shape)
